@@ -1,21 +1,45 @@
 package skyprocstarter;
 
 import lev.gui.LSaveFile;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import skyproc.*;
-import skyproc.gui.SPMainMenuPanel;
-import skyproc.gui.SUM;
-import skyproc.gui.SUMGUI;
+import skyproc.gui.*;
 import skyprocstarter.YourSaveFile.Settings;
 
+import javax.annotation.PostConstruct;
 import javax.swing.*;
 import java.awt.*;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.function.Function;
 
-/**
- * @author Your Name Here
- */
-public class SkyProcStarter implements SUM {
+@Slf4j
+@SpringBootApplication
+@ComponentScan(basePackages = {"skyproc", "skyprocstarter"},
+        // eventually remove SUM from skyproc core module
+        excludeFilters = {@ComponentScan.Filter(type= FilterType.ASSIGNABLE_TYPE, value=SUMprogram.class)}
+)
+public abstract class SkyProcStarter implements SUM {
+
+    public static final Color headerColor = new Color(66, 181, 184);  // Teal
+
+    public static final Color settingsColor = new Color(72, 179, 58);  // Green
+
+    @Autowired
+    Function<SPMainMenuPanel, SPSettingPanel> welcomePanelFactory;
+
+    @Autowired
+    Function<SPMainMenuPanel, SPSettingPanel> otherSettingsPanelFactory;
+
+    @Autowired
+    SPGlobal spGlobal;
 
     /*
      * The important functions to change are:
@@ -23,40 +47,46 @@ public class SkyProcStarter implements SUM {
      * - runChangesToPatch(), where you put all the processing code and add records to the output patch.
      */
 
-    public static final String myPatchName = "My Patch";
-    public static final String authorName = "Me";
-    public static final String version = "1.0";
-    public static final String welcomeText = "This is the standard starter project for SkyProc.  "
-            + "I hope it helps you get on your way to making an awesome patcher!";
-    public static final String descriptionToShowInSUM = "A brand new SkyProc patcher. Does lots of stuff.";
-    public static final Color headerColor = new Color(66, 181, 184);  // Teal
-    public static final Color settingsColor = new Color(72, 179, 58);  // Green
-    public static final Font settingsFont = new Font("Serif", Font.BOLD, 15);
+    @Value("${sp.local.patch.name}") // "My Patch"
+    private String spLocalPatchName;
+    public static String myPatchName;
+
+    @Value("${sp.local.patch.author}") // "Me"
+    public String authorName;
+
+    @Value("${sp.local.patch.version}") // "1.0"
+    public String version;
+
+    @Value("${sp.local.patch.welcome}") // "This is the standard starter project for SkyProc. I hope it helps you get on your way to making an awesome patcher!"
+    private String spLocalWelcomeText;
+    public static String welcomeText;
+
+    @Value("${sp.local.patch.sum.description}") // "A brand new SkyProc patcher. Does lots of stuff."
+    public String descriptionToShowInSUM;
+
+    @Value("${sp.local.patch.font.name}")
+    public String fontName;
+
+    public static Font settingsFont;
+
+    @PostConstruct
+    void postConstruct() {
+        myPatchName = this.spLocalPatchName;
+        welcomeText = this.spLocalWelcomeText;
+        settingsFont = new Font(this.fontName, Font.BOLD, 15);
+        log.info("SkyProcStarter post-construct");
+        SUMGUI.open(spGlobal, this, new String[] {});
+    }
+
     public static final SkyProcSave save = new YourSaveFile();
     /*
      * The types of records you want your patcher to import. Change this to
      * customize the import to what you need.
      */
-    final GRUP_TYPE[] importRequests = new GRUP_TYPE[]{
+    final GRUP_TYPE[] importRequests = new GRUP_TYPE[] {
             GRUP_TYPE.INGR,
             GRUP_TYPE.WEAP
     };
-
-    // Do not write the bulk of your program here
-    // Instead, write your patch changes in the "runChangesToPatch" function
-    // at the bottom
-    public static void main(String[] args) {
-        try {
-            SPGlobal.createGlobalLog();
-            SUMGUI.open(new SkyProcStarter(), args);
-        } catch (Exception e) {
-            // If a major error happens, print it everywhere and display a message box.
-            System.err.println(e.getMessage());
-            SPGlobal.logException(e);
-            JOptionPane.showMessageDialog(null, "There was an exception thrown during program execution: '" + e + "'  Check the debug logs or contact the author.");
-            SPGlobal.closeDebug();
-        }
-    }
 
     @Override
     public String getName() {
@@ -90,14 +120,15 @@ public class SkyProcStarter implements SUM {
     }
 
     // This is where you add panels to the main menu.
-    // First create custom panel classes (as shown by YourFirstSettingsPanel),
+    // First create custom panel classes (as shown by OtherSettingsPanel),
     // Then add them here.
     @Override
     public SPMainMenuPanel getStandardMenu() {
         SPMainMenuPanel settingsMenu = new SPMainMenuPanel(getHeaderColor());
 
-        settingsMenu.setWelcomePanel(new WelcomePanel(settingsMenu));
-        settingsMenu.addMenu(new OtherSettingsPanel(settingsMenu), false, save, Settings.OTHER_SETTINGS);
+        settingsMenu.setWelcomePanel(welcomePanelFactory.apply(settingsMenu));
+
+        settingsMenu.addMenu(otherSettingsPanelFactory.apply(settingsMenu), false, save, Settings.OTHER_SETTINGS);
 
         return settingsMenu;
     }
@@ -110,7 +141,8 @@ public class SkyProcStarter implements SUM {
 
     @Override
     public JFrame openCustomMenu() {
-        throw new UnsupportedOperationException("Not supported yet.");
+//        throw new UnsupportedOperationException("Not supported yet.");
+        return null;
     }
 
     @Override
@@ -120,7 +152,8 @@ public class SkyProcStarter implements SUM {
 
     @Override
     public URL getLogo() {
-        throw new UnsupportedOperationException("Not supported yet.");
+//        throw new UnsupportedOperationException("Not supported yet.");
+        return null;
     }
 
     @Override
@@ -199,4 +232,18 @@ public class SkyProcStarter implements SUM {
         // Write your changes to the patch here.
     }
 
+    //
+    //
+    //
+
+    /**
+     * Main function that starts the program and GUI.
+     *
+     * @param args
+     */
+    public static void main(String[] args) {
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(SkyProcStarter.class);
+        builder.headless(false);
+        @SuppressWarnings("unused") ConfigurableApplicationContext context = builder.run(args);
+    }
 }
