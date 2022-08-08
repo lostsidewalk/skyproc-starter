@@ -40,3 +40,10 @@ sp.local.patch.sum.description A more verbose message to display in the UI to de
 
 sp.local.patch.font.name The name of the font to use for everything 
 
+sp.local.patch.import.requests The record types SkyProc should import to construct this patch 
+
+sp.local.patch.is.string.tabled 'true' if this patch is string tabled 
+
+sp.local.patch.needs.patching // TODO: this value should be determined by a predicate function, not a property 
+
+sp.local.patch.required.mods Any mods that you REQUIRE to be present in order to patch 

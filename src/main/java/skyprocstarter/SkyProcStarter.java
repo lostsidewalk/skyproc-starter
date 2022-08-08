@@ -2,8 +2,10 @@ package skyprocstarter;
 
 import lev.gui.LSaveFile;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -11,20 +13,24 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import skyproc.*;
 import skyproc.gui.*;
-import skyprocstarter.YourSaveFile.Settings;
 
 import javax.annotation.PostConstruct;
 import javax.swing.*;
 import java.awt.*;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 @Slf4j
 @SpringBootApplication
 @ComponentScan(basePackages = {"skyproc", "skyprocstarter"},
-        // eventually remove SUM from skyproc core module
-        excludeFilters = {@ComponentScan.Filter(type= FilterType.ASSIGNABLE_TYPE, value=SUMprogram.class)}
+        excludeFilters = {
+                // eventually remove SUM from skyproc core module
+                @ComponentScan.Filter(type=FilterType.ASSIGNABLE_TYPE, value=SUMprogram.class),
+                @ComponentScan.Filter(type=FilterType.ASSIGNABLE_TYPE, value=YourPatcherConfig.class)
+        }
 )
 public abstract class SkyProcStarter implements SUM {
 
@@ -35,17 +41,26 @@ public abstract class SkyProcStarter implements SUM {
     @Autowired
     Function<SPMainMenuPanel, SPSettingPanel> welcomePanelFactory;
 
+    static class SettingsPanelDescriptor {
+        SPSettingPanel panel;
+        boolean checkboxPresent;
+        public Enum<?> setting;
+
+        SettingsPanelDescriptor(SPSettingPanel panel, boolean checkboxPresent, Enum<?> setting) {
+            this.panel = panel;
+            this.checkboxPresent = checkboxPresent;
+            this.setting = setting;
+        }
+    }
+
     @Autowired
-    Function<SPMainMenuPanel, SPSettingPanel> otherSettingsPanelFactory;
+    Function<SPMainMenuPanel, List<SettingsPanelDescriptor>> otherSettingsPanelFactory;
+
+    @Autowired
+    Consumer<Mod> customerPatcher;
 
     @Autowired
     SPGlobal spGlobal;
-
-    /*
-     * The important functions to change are:
-     * - getStandardMenu(), where you set up the GUI
-     * - runChangesToPatch(), where you put all the processing code and add records to the output patch.
-     */
 
     @Value("${sp.local.patch.name}") // "My Patch"
     private String spLocalPatchName;
@@ -67,6 +82,25 @@ public abstract class SkyProcStarter implements SUM {
     @Value("${sp.local.patch.font.name}")
     public String fontName;
 
+    @Value("${sp.local.patch.is.string.tabled}")
+    public boolean isStringTabled;
+
+    /*
+     * The types of records you want your patcher to import. Change this to
+     * customize the import to what you need.
+     */
+    @Value("${sp.local.patch.import.requests}")
+    GRUP_TYPE[] importRequests;
+
+    @Value("${sp.local.patch.needs.patching}")
+    boolean needsPatching;
+
+    @Value("${sp.local.patch.required.mods}")
+    String[] requiredMods;
+
+    @Autowired
+    ApplicationArguments applicationArguments;
+
     public static Font settingsFont;
 
     @PostConstruct
@@ -75,18 +109,43 @@ public abstract class SkyProcStarter implements SUM {
         welcomeText = this.spLocalWelcomeText;
         settingsFont = new Font(this.fontName, Font.BOLD, 15);
         log.info("SkyProcStarter post-construct");
-        SUMGUI.open(spGlobal, this, new String[] {});
+        String[] sumGUIArgs = handleArgs(this.applicationArguments.getSourceArgs());
+        SUMGUI.open(spGlobal, this, sumGUIArgs);
     }
 
-    public static final SkyProcSave save = new YourSaveFile();
-    /*
-     * The types of records you want your patcher to import. Change this to
-     * customize the import to what you need.
-     */
-    final GRUP_TYPE[] importRequests = new GRUP_TYPE[] {
-            GRUP_TYPE.INGR,
-            GRUP_TYPE.WEAP
-    };
+    static String[] handleArgs(String[] args) {
+        ArrayList<String> argsList = new ArrayList<>();
+
+        for (String s : args) {
+            argsList.add(s.toUpperCase());
+        }
+
+        String[] sumGUIArgs = new String[1];
+        if (argsList.contains("-GENPATCH")) {
+            sumGUIArgs[0] = "-GENPATCH";
+        }
+
+        return sumGUIArgs;
+    }
+
+    private static String arrToString(String[] arr) {
+        StringBuilder sb = new StringBuilder();
+        if (arr != null) {
+            for (String s : arr) {
+                if (s != null) {
+                    if (sb.length() > 0) {
+                        sb.append(",");
+                    }
+                    sb.append(s);
+                }
+            }
+        }
+
+        return sb.toString();
+    }
+
+    @Autowired
+    SkyProcSave save;
 
     @Override
     public String getName() {
@@ -119,16 +178,13 @@ public abstract class SkyProcStarter implements SUM {
         return true;
     }
 
-    // This is where you add panels to the main menu.
-    // First create custom panel classes (as shown by OtherSettingsPanel),
-    // Then add them here.
     @Override
     public SPMainMenuPanel getStandardMenu() {
         SPMainMenuPanel settingsMenu = new SPMainMenuPanel(getHeaderColor());
 
         settingsMenu.setWelcomePanel(welcomePanelFactory.apply(settingsMenu));
 
-        settingsMenu.addMenu(otherSettingsPanelFactory.apply(settingsMenu), false, save, Settings.OTHER_SETTINGS);
+        otherSettingsPanelFactory.apply(settingsMenu).forEach(m -> settingsMenu.addMenu(m.panel, m.checkboxPresent, save, m.setting));
 
         return settingsMenu;
     }
@@ -179,6 +235,7 @@ public abstract class SkyProcStarter implements SUM {
     @Override
     public Mod getExportPatch() {
         Mod out = new Mod(getListing());
+        out.setFlag(Mod.Mod_Flags.STRING_TABLED, isStringTabled);
         out.setAuthor(authorName);
         return out;
     }
@@ -188,29 +245,45 @@ public abstract class SkyProcStarter implements SUM {
         return headerColor;
     }
 
-    // Add any custom checks to determine if a patch is needed.
-    // On Automatic Variants, this function would check if any new packages were
-    // added or removed.
     @Override
     public boolean needsPatching() {
-        return false;
+        return needsPatching;
     }
 
     // This function runs when the program opens to "set things up"
     // It runs right after the save file is loaded, and before the GUI is displayed
+    @Autowired
+    Runnable preProcessor;
+
     @Override
     public void onStart() {
+        if (preProcessor != null) {
+            preProcessor.run();
+        }
     }
 
     // This function runs right as the program is about to close.
+    @Autowired
+    Runnable postProcessor;
+
     @Override
     public void onExit(boolean patchWasGenerated) {
+        if (postProcessor != null) {
+            postProcessor.run();
+        }
     }
 
-    // Add any mods that you REQUIRE to be present in order to patch.
     @Override
     public ArrayList<ModListing> requiredMods() {
-        return new ArrayList<>(0);
+        if (ArrayUtils.isNotEmpty(requiredMods)) {
+            ArrayList<ModListing> mods = new ArrayList<>(requiredMods.length);
+            for (String m : requiredMods) {
+                mods.add(new ModListing(m));
+            }
+            return mods;
+        } else {
+            return new ArrayList<>(0);
+        }
     }
 
     @Override
@@ -218,9 +291,6 @@ public abstract class SkyProcStarter implements SUM {
         return descriptionToShowInSUM;
     }
 
-    // This is where you should write the bulk of your code.
-    // Write the changes you would like to make to the patch,
-    // but DO NOT export it.  Exporting is handled internally.
     @Override
     public void runChangesToPatch() {
 
@@ -229,7 +299,7 @@ public abstract class SkyProcStarter implements SUM {
         Mod merger = new Mod(getName() + "Merger", false);
         merger.addAsOverrides(SPGlobal.getDB());
 
-        // Write your changes to the patch here.
+        customerPatcher.accept(patch);
     }
 
     //
@@ -243,7 +313,7 @@ public abstract class SkyProcStarter implements SUM {
      */
     public static void main(String[] args) {
         SpringApplicationBuilder builder = new SpringApplicationBuilder(SkyProcStarter.class);
-        builder.headless(false);
+        builder.headless(false); // TODO: could inspect args for -GENPATCH
         @SuppressWarnings("unused") ConfigurableApplicationContext context = builder.run(args);
     }
 }
