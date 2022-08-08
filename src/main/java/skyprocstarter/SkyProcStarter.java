@@ -28,8 +28,7 @@ import java.util.function.Function;
 @ComponentScan(basePackages = {"skyproc", "skyprocstarter"},
         excludeFilters = {
                 // eventually remove SUM from skyproc core module
-                @ComponentScan.Filter(type=FilterType.ASSIGNABLE_TYPE, value=SUMprogram.class),
-                @ComponentScan.Filter(type=FilterType.ASSIGNABLE_TYPE, value=YourPatcherConfig.class)
+                @ComponentScan.Filter(type=FilterType.ASSIGNABLE_TYPE, value=SUMprogram.class)
         }
 )
 public abstract class SkyProcStarter implements SUM {

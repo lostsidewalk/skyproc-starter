@@ -5,6 +5,7 @@ import lev.gui.LTextPane;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import skyproc.Mod;
 import skyproc.SkyProcSave;
 import skyproc.gui.SPMainMenuPanel;
@@ -23,8 +24,9 @@ import java.util.function.Function;
  * - customPatcher, where you put all the processing code and add records to the output patch.
  */
 @Slf4j
+@Profile("demo")
 @Configuration
-public class YourPatcherConfig {
+ public class YourPatcherConfig {
 
     @Bean(name = "welcomePanelFactory")
     Function<SPMainMenuPanel, SPSettingPanel> getWelcomePanelFactory() {
